@@ -18,7 +18,7 @@ import { SAMPLE_RECIPES } from './data/recipes';
 export default function App() {
   const [activeTab, setActiveTab] = useState<
     'input' | 'recipe' | 'pantry' | 'recipes-browse' | 'timer' | 'shopping'
-  >('recipe'); // Default to 'recipe' so user immediately sees the flagship Rustic Vegetable Frittata layout!
+  >('input'); // Default to 'input' so user opens the Create screen directly!
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
