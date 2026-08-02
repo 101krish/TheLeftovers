@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { Router, Request, Response } from "express";
 import { GoogleGenerativeAI, FunctionDeclarationSchemaType as Type, Schema } from "@google/generative-ai";
-import { RecipeSchema, SwapResponseSchema, DetectIngredientsResponseSchema } from "./schema.js";
+import { RecipeListResponseSchema, SwapResponseSchema, DetectIngredientsResponseSchema } from "./schema.js";
 
 const router = Router();
 
@@ -54,6 +54,18 @@ const RECIPE_GEMINI_SCHEMA: any = {
       type: Type.ARRAY,
       description: "Key ingredients that are required for this recipe but were NOT included in the user's input list",
       items: { type: Type.STRING }
+    },
+    imageUrl: {
+      type: Type.STRING,
+      description: "A real, high-quality, professional food photograph URL from Unsplash matching this recipe. Select a real Unsplash food photo ID from training data (e.g. photo-1546069901-ba9599a7e63c for salad, photo-1565299624946-b28f40a0ae38 for pizza). Format: https://images.unsplash.com/photo-<unsplash_id>?q=80&w=1200&auto=format&fit=crop"
+    },
+    imageAlt: {
+      type: Type.STRING,
+      description: "Descriptive alt text for the photo"
+    },
+    chefNoteText: {
+      type: Type.STRING,
+      description: "An optional chef note with tips, roasted substitutes or suggestions for cooking the dish"
     }
   },
   required: [
@@ -67,6 +79,18 @@ const RECIPE_GEMINI_SCHEMA: any = {
     "tags",
     "missingIngredients"
   ]
+};
+
+const RECIPE_LIST_GEMINI_SCHEMA: any = {
+  type: Type.OBJECT,
+  properties: {
+    recipes: {
+      type: Type.ARRAY,
+      description: "Array of exactly 4 unique recipes. The first should be a direct match, and the other 3 should be creative alternative choices.",
+      items: RECIPE_GEMINI_SCHEMA
+    }
+  },
+  required: ["recipes"]
 };
 
 const SWAP_GEMINI_SCHEMA: any = {
@@ -118,7 +142,7 @@ async function callGeminiWithTimeout<T>(
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
       reject(new Error("TIMEOUT_ERROR"));
-    }, 20000); // 20-second timeout
+    }, 45000); // 45-second timeout
   });
 
   try {
@@ -144,15 +168,21 @@ router.post("/generate-recipe", async (req: Request, res: Response) => {
       model: "gemini-2.5-flash",
       generationConfig: {
         responseMimeType: "application/json",
-        responseSchema: RECIPE_GEMINI_SCHEMA,
+        responseSchema: RECIPE_LIST_GEMINI_SCHEMA,
       },
     });
 
-    const prompt = `You are a professional chef. Create a detailed, delicious recipe based on the list of available ingredients and constraints.
+    const prompt = `You are a professional chef. Create exactly 4 unique recipes based on the list of available ingredients and constraints.
 Available ingredients: ${ingredients}
 Constraints: ${JSON.stringify(constraints || {})}
 
-Ensure all IDs (ingredients and steps) are unique. Classify any critical missing ingredients needed to complete the dish.`;
+Ensure all descriptions, taglines, ingredient lists, and steps are extremely concise and brief to minimize response payload. 
+For each recipe:
+1. Suggest distinct culinary paths (e.g. one sauté/stir-fry, one soup/stew, one baked/roasted dish, one salad or breakfast-style dish) using the available ingredients.
+2. Limit to at most 6 ingredients and 4 steps. Keep texts short, punchy, and clear.
+3. Select a real food photo URL from Unsplash matching each recipe name (e.g. photo-1546069901-ba9599a7e63c, etc.) and supply it in "imageUrl".
+4. Ensure all ingredient and step IDs are unique within each recipe.
+5. List any critical missing ingredients needed to complete the dish.`;
 
     const apiCall = model.generateContent(prompt);
     const response = await callGeminiWithTimeout(apiCall);
@@ -166,18 +196,18 @@ Ensure all IDs (ingredients and steps) are unique. Classify any critical missing
     const parsedJson = JSON.parse(text);
 
     // Validate structured response against Zod schema
-    const parseResult = RecipeSchema.safeParse(parsedJson);
+    const parseResult = RecipeListResponseSchema.safeParse(parsedJson);
     if (!parseResult.success) {
-      console.error("Zod validation failed for recipe:", parseResult.error.format());
+      console.error("Zod validation failed for recipe list:", parseResult.error.format());
       return res.status(400).json({ success: false, error: "bad_output" });
     }
 
     return res.status(200).json({
       success: true,
-      recipe: parseResult.data,
+      recipes: parseResult.data.recipes,
     });
   } catch (error: any) {
-    console.error("Error generating recipe:", error);
+    console.error("Error generating recipe list:", error);
     if (error?.message === "TIMEOUT_ERROR") {
       return res.status(504).json({ success: false, error: "timeout" });
     }
