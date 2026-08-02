@@ -11,7 +11,7 @@ app.use(cors({
   origin: "*", // In production we would restrict this, but for local testing * is suitable.
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: "6mb" }));
 
 // Register API routes
 app.use("/api", apiRouter);
