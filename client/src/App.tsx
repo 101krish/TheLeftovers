@@ -54,6 +54,15 @@ export default function App() {
 
   // Current displayed recipe (initializes with flagship Rustic Vegetable Frittata)
   const [currentRecipe, setCurrentRecipe] = useState<Recipe>(SAMPLE_RECIPES[0]);
+  const [generatedRecipes, setGeneratedRecipes] = useState<Recipe[]>(SAMPLE_RECIPES);
+  const [activeRecipeIndex, setActiveRecipeIndex] = useState<number>(0);
+
+  const handleSelectRecipeIndex = (index: number) => {
+    if (index >= 0 && index < generatedRecipes.length) {
+      setActiveRecipeIndex(index);
+      setCurrentRecipe(generatedRecipes[index]);
+    }
+  };
 
   // Saved recipes list
   const [savedRecipes, setSavedRecipes] = useState<Recipe[]>([SAMPLE_RECIPES[0]]);
@@ -112,8 +121,8 @@ export default function App() {
         return;
       }
 
-      if (!response.ok || !data.success || !data.recipe) {
-        let errMsg = data.error || 'Unable to generate recipe with these ingredients.';
+      if (!response.ok || !data.success || !data.recipes || !Array.isArray(data.recipes) || data.recipes.length === 0) {
+        let errMsg = data.error || 'Unable to generate recipes with these ingredients.';
         if (data.error === 'bad_output') {
           errMsg = "Gemini had trouble parsing the recipe. The generated structure didn't fit our recipe book. Please try submitting again.";
         } else if (data.error === 'network') {
@@ -124,47 +133,54 @@ export default function App() {
         throw new Error(errMsg);
       }
 
-      const raw = data.recipe;
+      const rawRecipes = data.recipes;
+      const parsedRecipes: Recipe[] = rawRecipes.map((raw: any, index: number) => {
+        // Resolve dynamic Unsplash or LoremFlickr image
+        let imageUrl = raw.imageUrl || '';
+        if (!imageUrl || !imageUrl.startsWith('http')) {
+          imageUrl = `https://loremflickr.com/1200/800/food,cooked,${encodeURIComponent(raw.title || 'dish')}`;
+        }
 
-      // Transform API result into Recipe model
-      const generatedRecipe: Recipe = {
-        id: `recipe-gen-${Date.now()}`,
-        title: raw.title || 'Artisanal Fridge Creation',
-        tagline: raw.description || raw.tagline || 'A custom crafted dish made from your fridge staples.',
-        prepTime: typeof raw.prepTime === 'number' ? `${raw.prepTime} min` : raw.prepTime || '20 min',
-        tags: raw.tags || (tags.length > 0 ? tags : ['Fresh', '20 min']),
-        servings: raw.servings || 2,
-        imageUrl:
-          'https://images.unsplash.com/photo-1540420773420-3366772f4999?q=80&w=1200&auto=format&fit=crop',
-        imageAlt: raw.title,
-        ingredients: (raw.ingredients || []).map((ing: any, i: number) => ({
-          id: ing.id || `ing-gen-${i}-${Date.now()}`,
-          name: ing.name,
-          amount: typeof ing.amount === 'number' ? ing.amount : 1,
-          unit: ing.unit || '',
-          category: ing.category || 'pantry',
-          optional: ing.optional || false,
-        })),
-        missingIngredients: raw.missingIngredients || [],
-        steps: (raw.steps || []).map((st: any, i: number) => ({
-          id: st.id || `step-gen-${i}-${Date.now()}`,
-          number: st.stepNumber || st.number || i + 1,
-          title: `STEP 0${st.stepNumber || st.number || i + 1}`.toUpperCase(),
-          description: st.text || st.description || '',
-          timerMinutes: st.timerMinutes || undefined,
-        })),
-        chefNote: raw.chefNoteText
-          ? {
-              text: raw.chefNoteText,
-              authorName: 'Chef Antoine',
-              authorTitle: 'Culinary Editor',
-              avatarUrl:
-                'https://images.unsplash.com/photo-1577219491135-ce391730fb2c?q=80&w=200&auto=format&fit=crop',
-            }
-          : undefined,
-      };
+        return {
+          id: `recipe-gen-${index}-${Date.now()}`,
+          title: raw.title || 'Artisanal Fridge Creation',
+          tagline: raw.description || raw.tagline || 'A custom crafted dish made from your fridge staples.',
+          prepTime: typeof raw.prepTime === 'number' ? `${raw.prepTime} min` : raw.prepTime || '20 min',
+          tags: raw.tags || (tags.length > 0 ? tags : ['Fresh', '20 min']),
+          servings: raw.servings || 2,
+          imageUrl,
+          imageAlt: raw.imageAlt || raw.title || 'Artisanal Fridge Creation',
+          ingredients: (raw.ingredients || []).map((ing: any, i: number) => ({
+            id: ing.id || `ing-gen-${i}-${index}-${Date.now()}`,
+            name: ing.name,
+            amount: typeof ing.amount === 'number' ? ing.amount : 1,
+            unit: ing.unit || '',
+            category: ing.category || 'pantry',
+            optional: ing.optional || false,
+          })),
+          missingIngredients: raw.missingIngredients || [],
+          steps: (raw.steps || []).map((st: any, i: number) => ({
+            id: st.id || `step-gen-${i}-${index}-${Date.now()}`,
+            number: st.stepNumber || st.number || i + 1,
+            title: `STEP 0${st.stepNumber || st.number || i + 1}`.toUpperCase(),
+            description: st.text || st.description || '',
+            timerMinutes: st.timerMinutes || undefined,
+          })),
+          chefNote: raw.chefNoteText
+            ? {
+                text: raw.chefNoteText,
+                authorName: 'Chef Antoine',
+                authorTitle: 'Culinary Editor',
+                avatarUrl:
+                  'https://images.unsplash.com/photo-1577219491135-ce391730fb2c?q=80&w=200&auto=format&fit=crop',
+              }
+            : undefined,
+        };
+      });
 
-      setCurrentRecipe(generatedRecipe);
+      setGeneratedRecipes(parsedRecipes);
+      setActiveRecipeIndex(0);
+      setCurrentRecipe(parsedRecipes[0]);
     } catch (err: any) {
       if (err.name === 'AbortError') {
         return;
@@ -450,6 +466,12 @@ export default function App() {
                 onStartTimer={handleStartTimer}
                 onSaveRecipe={handleToggleSaveRecipe}
                 isSaved={isCurrentSaved}
+                recipesList={generatedRecipes}
+                activeRecipeIndex={activeRecipeIndex}
+                onSelectRecipeIndex={handleSelectRecipeIndex}
+                onRegenerate={() => {
+                  handleGenerateRecipe(lastInputQuery || 'eggs, spinach, onion', []);
+                }}
               />
             )}
 
