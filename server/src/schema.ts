@@ -35,3 +35,14 @@ export type Recipe = z.infer<typeof RecipeSchema>;
 export type Ingredient = z.infer<typeof IngredientSchema>;
 export type Step = z.infer<typeof StepSchema>;
 export type SwapResponse = z.infer<typeof SwapResponseSchema>;
+
+export const DetectIngredientsResponseSchema = z.object({
+  ingredients: z.array(
+    z.object({
+      name: z.string(),
+      confidence: z.enum(["high", "medium", "low"]),
+    })
+  ),
+});
+
+export type DetectIngredientsResponse = z.infer<typeof DetectIngredientsResponseSchema>;
