@@ -202,9 +202,21 @@ For each recipe:
       return res.status(400).json({ success: false, error: "bad_output" });
     }
 
+    const recipesWithIds = parseResult.data.recipes.map((recipe: any, recipeIdx: number) => ({
+      ...recipe,
+      ingredients: recipe.ingredients.map((ing: any, ingIdx: number) => ({
+        ...ing,
+        id: ing.id || `ing-${recipeIdx}-${ingIdx}-${Date.now()}`
+      })),
+      steps: recipe.steps.map((step: any, stepIdx: number) => ({
+        ...step,
+        id: step.id || `step-${recipeIdx}-${stepIdx}-${Date.now()}`
+      }))
+    }));
+
     return res.status(200).json({
       success: true,
-      recipes: parseResult.data.recipes,
+      recipes: recipesWithIds,
     });
   } catch (error: any) {
     console.error("Error generating recipe list:", error);
