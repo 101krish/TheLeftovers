@@ -133,13 +133,38 @@ export default function App() {
         throw new Error(errMsg);
       }
 
+      const getFoodImage = (title: string, tagsList: string[] = []): string => {
+        const t = title.toLowerCase();
+        const allTags = tagsList.map(tag => tag.toLowerCase());
+
+        if (t.includes('pasta') || t.includes('noodle') || t.includes('spaghetti') || t.includes('macaroni') || t.includes('ramen')) {
+          return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=1200&auto=format&fit=crop';
+        }
+        if (t.includes('pizza') || t.includes('bread') || t.includes('bake') || t.includes('toast') || t.includes('dough') || t.includes('bun')) {
+          return 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?q=80&w=1200&auto=format&fit=crop';
+        }
+        if (t.includes('salad') || t.includes('bowl') || allTags.includes('vegetarian') || allTags.includes('vegan') || t.includes('green')) {
+          return 'https://images.unsplash.com/photo-1540420773420-3366772f4999?q=80&w=1200&auto=format&fit=crop';
+        }
+        if (t.includes('steak') || t.includes('beef') || t.includes('rib') || t.includes('chicken') || t.includes('meat') || t.includes('pork') || t.includes('bacon') || t.includes('turkey')) {
+          return 'https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop';
+        }
+        if (t.includes('soup') || t.includes('stew') || t.includes('curry') || t.includes('sauce') || t.includes('chili') || t.includes('broth')) {
+          return 'https://images.unsplash.com/photo-1547592165-e1d17fed6005?q=80&w=1200&auto=format&fit=crop';
+        }
+        if (t.includes('cake') || t.includes('dessert') || t.includes('sweet') || t.includes('chocolate') || t.includes('cookie') || t.includes('fruit') || t.includes('pie')) {
+          return 'https://images.unsplash.com/photo-1587314168485-3236d6710814?q=80&w=1200&auto=format&fit=crop';
+        }
+        if (t.includes('egg') || t.includes('breakfast') || t.includes('frittata') || t.includes('omelet') || t.includes('scramble') || t.includes('quiche')) {
+          return 'https://images.unsplash.com/photo-1525351484163-7529414344d8?q=80&w=1200&auto=format&fit=crop';
+        }
+        return 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=1200&auto=format&fit=crop';
+      };
+
       const rawRecipes = data.recipes;
       const parsedRecipes: Recipe[] = rawRecipes.map((raw: any, index: number) => {
-        // Resolve dynamic Unsplash or LoremFlickr image
-        let imageUrl = raw.imageUrl || '';
-        if (!imageUrl || !imageUrl.startsWith('http')) {
-          imageUrl = `https://loremflickr.com/1200/800/food,cooked,${encodeURIComponent(raw.title || 'dish')}`;
-        }
+        const recipeTags = raw.tags || (tags.length > 0 ? tags : ['Fresh', '20 min']);
+        const imageUrl = getFoodImage(raw.title || '', recipeTags);
 
         return {
           id: `recipe-gen-${index}-${Date.now()}`,
