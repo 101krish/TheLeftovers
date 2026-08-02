@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Sparkles, ArrowRight, Refrigerator, ChefHat, Check } from 'lucide-react';
+import { Sparkles, ArrowRight, Refrigerator, ChefHat, Check, Camera, Upload, RefreshCw } from 'lucide-react';
 
 interface InputScreenProps {
   onGenerate: (ingredients: string, tags: string[]) => void;
   isLoading: boolean;
   onSelectSampleRecipe: (recipeId: string) => void;
+  onDetectIngredients: (base64Image: string, mediaType: string, previewUrl: string) => void;
+  isDetecting: boolean;
 }
 
 const EXAMPLE_CHIPS = [
@@ -20,9 +22,16 @@ export const InputScreen: React.FC<InputScreenProps> = ({
   onGenerate,
   isLoading,
   onSelectSampleRecipe,
+  onDetectIngredients,
+  isDetecting,
 }) => {
+  const [inputMode, setInputMode] = useState<'text' | 'photo'>('text');
   const [ingredientsText, setIngredientsText] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isCompilingImage, setIsCompilingImage] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   const handleChipClick = (chipText: string) => {
     setIngredientsText(chipText);
@@ -36,10 +45,100 @@ export const InputScreen: React.FC<InputScreenProps> = ({
     }
   };
 
+  const compressAndResizeImage = (file: File): Promise<{ base64: string; mediaType: string }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 1200;
+
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Canvas context not available'));
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+          // Compress as JPEG at 80% quality
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+          const parts = compressedBase64.split(',');
+          const mediaType = parts[0].split(';')[0].split(':')[1] || 'image/jpeg';
+          const base64Data = parts[1];
+
+          resolve({ base64: base64Data, mediaType });
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => reject(new Error('FileReader error'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setPhotoError(null);
+    setIsCompilingImage(true);
+    setSelectedFile(file);
+
+    // Create a local object URL for preview instantly
+    const localUrl = URL.createObjectURL(file);
+    setImagePreview(localUrl);
+    setIsCompilingImage(false);
+  };
+
+  const handleStartDetection = async () => {
+    if (!selectedFile) return;
+
+    setIsCompilingImage(true);
+    setPhotoError(null);
+
+    try {
+      if (selectedFile.size > 10 * 1024 * 1024) {
+        throw new Error("Image file is too large. Please select a photo smaller than 10MB.");
+      }
+      const { base64, mediaType } = await compressAndResizeImage(selectedFile);
+      onDetectIngredients(base64, mediaType, imagePreview || '');
+    } catch (err: any) {
+      console.error("Image processing error:", err);
+      setPhotoError(err.message || "Failed to process image. Please try again.");
+    } finally {
+      setIsCompilingImage(false);
+    }
+  };
+
+  const handleClearPhoto = () => {
+    setSelectedFile(null);
+    setImagePreview(null);
+    setPhotoError(null);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ingredientsText.trim()) return;
-    onGenerate(ingredientsText, selectedTags);
+    if (inputMode === 'text') {
+      if (!ingredientsText.trim()) return;
+      onGenerate(ingredientsText, selectedTags);
+    } else {
+      handleStartDetection();
+    }
   };
 
   return (
@@ -57,47 +156,78 @@ export const InputScreen: React.FC<InputScreenProps> = ({
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Ingredient Textarea */}
-        <div className="space-y-3">
-          <label htmlFor="fridge-ingredients-input" className="block font-['Space_Grotesk'] text-xs font-bold uppercase tracking-[0.2em] text-white/80">
-            Available Ingredients
-          </label>
-          <div className="relative">
-            <textarea
-              id="fridge-ingredients-input"
-              rows={4}
-              value={ingredientsText}
-              onChange={(e) => setIngredientsText(e.target.value)}
-              placeholder="eggs, spinach, leftover rice, half an onion, feta cheese, garlic, smoked paprika..."
-              className="w-full bg-[#121212] border-2 border-white/20 p-5 text-base md:text-lg font-['Space_Grotesk'] text-[#F5F5F5] placeholder-white/30 focus:outline-none focus:border-[#FF3E00] transition-all resize-y rounded-none"
-              disabled={isLoading}
-            />
-            {ingredientsText.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setIngredientsText('')}
-                className="absolute top-4 right-4 text-xs font-mono text-white/40 hover:text-[#FF3E00] uppercase tracking-wider font-bold"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        </div>
+      {/* Input Mode Tabs */}
+      <div className="flex border-b border-white/10 mb-8 font-['Space_Grotesk'] text-xs font-bold uppercase tracking-[0.2em]">
+        <button
+          type="button"
+          onClick={() => {
+            setInputMode('text');
+            setPhotoError(null);
+          }}
+          className={`py-3 px-6 border-b-2 transition-colors cursor-pointer ${
+            inputMode === 'text'
+              ? 'border-[#FF3E00] text-white'
+              : 'border-transparent text-white/40 hover:text-white'
+          }`}
+        >
+          Text Input
+        </button>
+        <button
+          type="button"
+          onClick={() => setInputMode('photo')}
+          className={`py-3 px-6 border-b-2 transition-colors cursor-pointer ${
+            inputMode === 'photo'
+              ? 'border-[#FF3E00] text-white'
+              : 'border-transparent text-white/40 hover:text-white'
+          }`}
+        >
+          Photo Scan
+        </button>
+      </div>
 
-        {/* Tappable Example Chips */}
-        <div className="space-y-3">
-          <span className="block font-['Space_Grotesk'] text-xs font-bold uppercase tracking-[0.2em] text-white/50">
-            Or tap a pre-matched ingredient combination:
-          </span>
-          <div className="flex flex-wrap gap-2.5">
-            {EXAMPLE_CHIPS.map((chip, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => handleChipClick(chip)}
-                className="text-xs font-['Space_Grotesk'] bg-[#181818] hover:bg-[#222222] border border-white/20 hover:border-[#FF3E00] px-3.5 py-2.5 text-white/90 transition-all text-left flex items-center gap-2 font-medium"
-              >
+      <form onSubmit={handleSubmit} className="space-y-8">
+        {inputMode === 'text' ? (
+          /* Ingredient Textarea Input Mode */
+          <div className="space-y-8">
+            <div className="space-y-3">
+              <label htmlFor="fridge-ingredients-input" className="block font-['Space_Grotesk'] text-xs font-bold uppercase tracking-[0.2em] text-white/80">
+                Available Ingredients
+              </label>
+              <div className="relative">
+                <textarea
+                  id="fridge-ingredients-input"
+                  rows={4}
+                  value={ingredientsText}
+                  onChange={(e) => setIngredientsText(e.target.value)}
+                  placeholder="eggs, spinach, leftover rice, half an onion, feta cheese, garlic, smoked paprika..."
+                  className="w-full bg-[#121212] border-2 border-white/20 p-5 text-base md:text-lg font-['Space_Grotesk'] text-[#F5F5F5] placeholder-white/30 focus:outline-none focus:border-[#FF3E00] transition-all resize-y rounded-none"
+                  disabled={isLoading}
+                />
+                {ingredientsText.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIngredientsText('')}
+                    className="absolute top-4 right-4 text-xs font-mono text-white/40 hover:text-[#FF3E00] uppercase tracking-wider font-bold"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Tappable Example Chips */}
+            <div className="space-y-3">
+              <span className="block font-['Space_Grotesk'] text-xs font-bold uppercase tracking-[0.2em] text-white/50">
+                Or tap a pre-matched ingredient combination:
+              </span>
+              <div className="flex flex-wrap gap-2.5">
+                {EXAMPLE_CHIPS.map((chip, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleChipClick(chip)}
+                    className="text-xs font-['Space_Grotesk'] bg-[#181818] hover:bg-[#222222] border border-white/20 hover:border-[#FF3E00] px-3.5 py-2.5 text-white/90 transition-all text-left flex items-center gap-2 font-medium"
+                  >
                 <span className="text-[#FF3E00] font-bold">+</span>
                 <span>{chip}</span>
               </button>
@@ -148,7 +278,86 @@ export const InputScreen: React.FC<InputScreenProps> = ({
             Instant Studio Execution
           </span>
         </div>
-      </form>
+      </div>
+    ) : (
+      /* Photo Scan Input Mode */
+      <div className="space-y-6">
+        <div className="space-y-3">
+          <span className="block font-['Space_Grotesk'] text-xs font-bold uppercase tracking-[0.2em] text-white/80">
+            Scan Fridge Ingredients
+          </span>
+          
+          {!imagePreview ? (
+            /* Empty Upload Dropzone */
+            <div className="flex flex-col items-center justify-center border-2 border-dashed border-white/20 hover:border-[#FF3E00] p-10 bg-[#121212] transition-colors relative group min-h-[220px]">
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileChange}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                disabled={isLoading || isDetecting}
+              />
+              <Camera className="w-10 h-10 text-[#FF3E00] mb-3 group-hover:scale-110 transition-transform" />
+              <span className="font-['Space_Grotesk'] text-sm font-bold text-white/95">
+                Take photo or select an image
+              </span>
+              <span className="font-['Space_Grotesk'] text-xs text-white/40 mt-1">
+                Supports JPG, PNG, WEBP (Maximum 10MB)
+              </span>
+            </div>
+          ) : (
+            /* Photo Selected & Preview */
+            <div className="border border-white/20 bg-[#121212] p-6 flex flex-col md:flex-row items-center gap-6">
+              <div className="w-36 h-36 bg-[#181818] overflow-hidden border border-white/10 shrink-0 aspect-square">
+                <img src={imagePreview} alt="Captured ingredients preview" className="w-full h-full object-cover" />
+              </div>
+              <div className="flex-1 space-y-3 w-full text-center md:text-left">
+                <p className="font-['Space_Grotesk'] text-sm font-bold text-white uppercase tracking-wider truncate max-w-md">
+                  {selectedFile?.name || 'Staples Capture'}
+                </p>
+                <div className="flex flex-wrap gap-3 justify-center md:justify-start">
+                  <button
+                    type="button"
+                    onClick={handleStartDetection}
+                    disabled={isCompilingImage || isDetecting}
+                    className="bg-[#FF3E00] hover:bg-white text-black font-['Space_Grotesk'] text-xs font-black uppercase tracking-widest px-5 py-3 transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {(isCompilingImage || isDetecting) ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Processing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 stroke-[2]" />
+                        <span>Detect Ingredients</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearPhoto}
+                    disabled={isCompilingImage || isDetecting}
+                    className="border border-white/20 hover:border-white text-white/80 font-['Space_Grotesk'] text-xs font-bold uppercase tracking-widest px-5 py-3 transition-colors bg-transparent cursor-pointer disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Error Message for Photo Mode */}
+        {photoError && (
+          <div className="p-4 bg-[#FF3E00]/10 border-l-4 border-[#FF3E00] text-xs font-mono text-[#FF3E00]/90">
+            {photoError}
+          </div>
+        )}
+      </div>
+    )}
+  </form>
 
       {/* Featured Classic Recipes Direct Shortcuts */}
       <div className="mt-16 pt-10 border-t border-white/10">
