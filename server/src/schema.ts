@@ -1,36 +1,48 @@
 import { z } from "zod";
 
 export const IngredientSchema = z.object({
-  id: z.string(),
+  id: z.string().optional(),
   name: z.string(),
-  amount: z.number(),
-  unit: z.string(),
-  optional: z.boolean(),
+  amount: z.union([z.number(), z.string()]).transform((val) => {
+    if (typeof val === 'number') return val;
+    const parsed = parseFloat(val);
+    return isNaN(parsed) ? 1 : parsed;
+  }),
+  unit: z.string().default(""),
+  optional: z.boolean().default(false),
 });
 
 export const StepSchema = z.object({
-  id: z.string(),
-  stepNumber: z.number(),
+  id: z.string().optional(),
+  stepNumber: z.union([z.number(), z.string()]).transform((val) => {
+    if (typeof val === 'number') return val;
+    const parsed = parseInt(val, 10);
+    return isNaN(parsed) ? 1 : parsed;
+  }),
   text: z.string(),
 });
 
 export const RecipeSchema = z.object({
   title: z.string(),
-  description: z.string(),
-  servings: z.number().int().positive(),
-  prepTime: z.number().nonnegative(),
-  cookTime: z.number().nonnegative(),
+  description: z.string().default(""),
+  servings: z.union([z.number(), z.string()]).transform((val) => {
+    if (typeof val === 'number') return val;
+    const parsed = parseInt(val, 10);
+    return isNaN(parsed) ? 2 : parsed;
+  }),
+  prepTime: z.union([z.number(), z.string()]).default(15),
+  cookTime: z.union([z.number(), z.string()]).default(15),
   ingredients: z.array(IngredientSchema),
   steps: z.array(StepSchema),
-  tags: z.array(z.string()),
-  missingIngredients: z.array(z.string()),
+  tags: z.array(z.string()).default([]),
+  missingIngredients: z.array(z.string()).default([]),
   imageUrl: z.string().optional(),
   imageAlt: z.string().optional(),
   chefNoteText: z.string().optional(),
 });
 
 export const RecipeListResponseSchema = z.object({
-  recipes: z.array(RecipeSchema).min(4).max(4),
+  recipes: z.array(RecipeSchema),
 });
 
 export const SwapResponseSchema = z.object({
