@@ -21,6 +21,10 @@ interface RecipeViewProps {
   onStartTimer: (minutes: number, label: string) => void;
   onSaveRecipe?: (recipe: Recipe) => void;
   isSaved?: boolean;
+  recipesList?: Recipe[];
+  activeRecipeIndex?: number;
+  onSelectRecipeIndex?: (index: number) => void;
+  onRegenerate?: () => void;
 }
 
 export const RecipeView: React.FC<RecipeViewProps> = ({
@@ -30,6 +34,10 @@ export const RecipeView: React.FC<RecipeViewProps> = ({
   onStartTimer,
   onSaveRecipe,
   isSaved = false,
+  recipesList = [],
+  activeRecipeIndex = 0,
+  onSelectRecipeIndex,
+  onRegenerate,
 }) => {
   const [servings, setServings] = useState<number>(recipe.servings || 2);
   const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>({});
@@ -88,7 +96,7 @@ export const RecipeView: React.FC<RecipeViewProps> = ({
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 md:px-12 py-8 lg:py-12 font-['Space_Grotesk',sans-serif]">
+    <div className="max-w-7xl mx-auto px-4 md:px-12 py-8 lg:py-12 font-['Space_Grotesk',sans-serif]">
       {/* Recipe Header */}
       <section className="mb-10 border-b border-white/10 pb-8">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
@@ -384,6 +392,74 @@ export const RecipeView: React.FC<RecipeViewProps> = ({
           )}
         </section>
       </div>
+
+      {/* Alternative Recipe Choices */}
+      {recipesList && recipesList.length > 1 && (
+        <div className="mt-16 pt-10 border-t border-white/10 space-y-8">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-2 text-[#FF3E00] font-mono text-xs font-bold uppercase tracking-[0.25em]">
+                <Sparkles className="w-4 h-4 stroke-[2.5]" />
+                <span>EXPLORE ALTERNATIVES</span>
+              </div>
+              <h3 className="font-['Syne'] text-2xl md:text-3xl font-black uppercase text-[#F5F5F5] tracking-tight">
+                Alternative Culinary Paths
+              </h3>
+              <p className="font-['Space_Grotesk'] text-sm text-white/50 italic mt-1">
+                We've crafted 3 alternative recipe ideas with the same ingredients. Tap any to switch.
+              </p>
+            </div>
+
+            {onRegenerate && (
+              <button
+                type="button"
+                onClick={onRegenerate}
+                className="bg-transparent hover:bg-white/10 text-white hover:text-white font-['Space_Grotesk'] text-xs font-bold uppercase tracking-[0.2em] px-5 py-3 border border-white/20 hover:border-white transition-all flex items-center gap-2 cursor-pointer self-start sm:self-center"
+              >
+                <RotateCcw className="w-4 h-4 stroke-[2.5]" />
+                <span>Shuffle Ideas</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {recipesList.map((altRecipe, idx) => {
+              // Skip the active recipe
+              if (idx === activeRecipeIndex) return null;
+
+              return (
+                <button
+                  key={altRecipe.id || idx}
+                  type="button"
+                  onClick={() => onSelectRecipeIndex?.(idx)}
+                  className="text-left p-6 bg-[#121212] hover:bg-[#1a1a1a] border border-white/20 hover:border-[#FF3E00] transition-all group flex flex-col justify-between min-h-[220px] rounded-none cursor-pointer"
+                >
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="bg-[#FF3E00] text-black text-[9px] uppercase font-black font-mono px-2 py-0.5 inline-block tracking-wider">
+                        {altRecipe.tags?.[0] || 'Alternative'}
+                      </span>
+                      <span className="font-mono text-[10px] text-white/40 font-bold uppercase">
+                        {altRecipe.prepTime}
+                      </span>
+                    </div>
+                    <h4 className="font-['Syne'] text-lg font-bold text-white group-hover:text-[#FF3E00] transition-colors line-clamp-2">
+                      {altRecipe.title}
+                    </h4>
+                    <p className="font-['Space_Grotesk'] text-xs text-white/60 line-clamp-3 leading-relaxed">
+                      {altRecipe.tagline || altRecipe.description}
+                    </p>
+                  </div>
+                  <div className="mt-6 pt-3 border-t border-white/10 flex justify-between items-center text-[10px] font-mono font-bold text-white/50 w-full">
+                    <span>{altRecipe.servings} Servings</span>
+                    <span className="text-[#FF3E00] group-hover:translate-x-1 transition-transform">VIEW RECIPE →</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
