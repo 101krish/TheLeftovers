@@ -85,11 +85,20 @@ We successfully wired the existing designs to the backend without altering any c
 
 ---
 
-## Known Limitations
-- **Upstream Call Times:** Gemini generation may take between 3 to 10 seconds depending on network latency.
+## Photo Detection Section
+
+This feature allows users to scan kitchen ingredients directly from their camera or upload an image.
+1. **Camera/Upload trigger:** Utilizes native mobile camera capture or desktop file picker.
+2. **Client-side compression:** Image is resized to a maximum of 1200px width/height and compressed to JPEG format (0.8 quality) on an HTML5 `<canvas>` before submission.
+3. **Dual-step confirmation:** Extracted ingredients are listed as editable chips (dashed borders for low-confidence) for users to review, delete, or append before generating a recipe.
+
+### Known Limitations
+- **Scanning accuracy:** Packaged, branded, or cut items might be misread under low-lighting conditions.
+- **Quantities/Units:** The image scanner identifies *what* ingredients are present, not their exact weight/volume.
+- **Upstream Call Times:** Vision detection and recipe generation may take between 3 to 10 seconds.
 - **Dietary Constraints Mapping:** The frontend sends `selectedTags` (e.g. Vegetarian, Gluten-Free) as an array which is passed to the Gemini prompt constraints. Gemini will strictly attempt to honor them, but Zod does not perform semantic dietary validation on the output ingredients themselves.
 
 ---
 
 ## Time Spent
-- **Total Duration:** ~3 hours (including environment setup, dependency installations, backend route building, schema configurations, frontend integration, and race condition/timeout testing).
+- **Total Duration:** ~4.5 hours (including full setup, monorepo restructuring, API route implementations, vision scan integration, canvas compression, double-submit protection, and Vercel hosting setup).
