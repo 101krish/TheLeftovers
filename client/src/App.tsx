@@ -10,6 +10,7 @@ import { ShoppingListView } from './components/ShoppingListView';
 import { BrowseRecipesView } from './components/BrowseRecipesView';
 import { ErrorState } from './components/ErrorState';
 import { MobileFooterNav } from './components/MobileFooterNav';
+import { DetectedReview } from './components/DetectedReview';
 
 import { Recipe, IngredientItem, KitchenTimer } from './types';
 import { SAMPLE_RECIPES } from './data/recipes';
@@ -26,11 +27,27 @@ export default function App() {
   const requestIdRef = useRef<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Cleanup abort controller on unmount
+  // Vision detection states
+  const [isDetecting, setIsDetecting] = useState<boolean>(false);
+  const [detectedIngredients, setDetectedIngredients] = useState<
+    Array<{ name: string; confidence: 'high' | 'medium' | 'low' }> | null
+  >(null);
+  const [detectedImagePreview, setDetectedImagePreview] = useState<string | null>(null);
+  const [isDetectionEmpty, setIsDetectionEmpty] = useState<boolean>(false);
+
+  const detectionRequestIdRef = useRef<number>(0);
+  const detectionAbortControllerRef = useRef<AbortController | null>(null);
+  const lastPhotoRef = useRef<{ base64: string; mediaType: string; previewUrl: string } | null>(null);
+  const errorContextRef = useRef<'generation' | 'detection'>('generation');
+
+  // Cleanup abort controllers on unmount
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
+      }
+      if (detectionAbortControllerRef.current) {
+        detectionAbortControllerRef.current.abort();
       }
     };
   }, []);
@@ -169,6 +186,95 @@ export default function App() {
     }
   };
 
+  // Cancel active vision detection
+  const cancelDetection = () => {
+    if (detectionAbortControllerRef.current) {
+      detectionAbortControllerRef.current.abort();
+      detectionAbortControllerRef.current = null;
+    }
+    setIsDetecting(false);
+    setDetectedIngredients(null);
+    setDetectedImagePreview(null);
+    setIsDetectionEmpty(false);
+  };
+
+  // POST base64 image to vision detection endpoint
+  const handleDetectIngredients = async (base64Image: string, mediaType: string, previewUrl: string) => {
+    setIsDetecting(true);
+    setErrorMsg(null);
+    setIsDetectionEmpty(false);
+    setDetectedIngredients(null);
+    errorContextRef.current = 'detection';
+
+    // Store for potential retries
+    lastPhotoRef.current = { base64: base64Image, mediaType, previewUrl };
+
+    const currentRequestId = ++detectionRequestIdRef.current;
+
+    if (detectionAbortControllerRef.current) {
+      detectionAbortControllerRef.current.abort();
+    }
+    detectionAbortControllerRef.current = new AbortController();
+
+    try {
+      const response = await fetch('/api/detect-ingredients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64Image, mediaType }),
+        signal: detectionAbortControllerRef.current.signal,
+      });
+
+      if (currentRequestId !== detectionRequestIdRef.current) {
+        return;
+      }
+
+      const data = await response.json();
+
+      if (currentRequestId !== detectionRequestIdRef.current) {
+        return;
+      }
+
+      if (!response.ok || !data.success) {
+        let errMsg = data.error || 'Unable to scan ingredients from this photo.';
+        if (data.error === 'bad_output') {
+          errMsg = "Gemini Vision had trouble processing this image. Please try again with a clearer picture.";
+        } else if (data.error === 'network') {
+          errMsg = "We can't connect to our vision service. Please check if the server is running.";
+        } else if (data.error === 'timeout') {
+          errMsg = "Scanning the image took too long (exceeded 20 seconds). Please try again!";
+        }
+        throw new Error(errMsg);
+      }
+
+      const detected = data.ingredients || [];
+      setDetectedImagePreview(previewUrl);
+
+      if (detected.length === 0) {
+        setIsDetectionEmpty(true);
+      } else {
+        setDetectedIngredients(detected);
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return;
+      }
+      if (currentRequestId !== detectionRequestIdRef.current) {
+        return;
+      }
+
+      console.error('Failed to detect ingredients:', err);
+      const isNetworkError = err.message?.includes('Failed to fetch') || err.message?.includes('network');
+      const errorMsgText = isNetworkError
+        ? "We can't connect to our vision service. Please check if the server is running."
+        : err.message || 'Error communicating with vision AI.';
+      setErrorMsg(errorMsgText);
+    } finally {
+      if (currentRequestId === detectionRequestIdRef.current) {
+        setIsDetecting(false);
+      }
+    }
+  };
+
   // Recipe saving toggle
   const handleToggleSaveRecipe = (recipeToSave: Recipe) => {
     const isAlreadySaved = savedRecipes.some((r) => r.id === recipeToSave.id);
@@ -230,7 +336,12 @@ export default function App() {
       {/* Top Header */}
       <Header
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={(tab) => {
+          if (tab !== 'input') {
+            cancelDetection();
+          }
+          setActiveTab(tab);
+        }}
         activeTimersCount={activeTimersCount}
         shoppingListCount={shoppingList.length}
       />
@@ -238,26 +349,97 @@ export default function App() {
       {/* Main Container */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-2 sm:px-4">
         {/* Loading State */}
-        {isLoading && <SkeletonRecipeView />}
+        {(isLoading || isDetecting) && <SkeletonRecipeView />}
 
         {/* Error State */}
-        {!isLoading && errorMsg && (
+        {!isLoading && !isDetecting && errorMsg && (
           <ErrorState
             errorMessage={errorMsg}
-            onRetry={() => handleGenerateRecipe(lastInputQuery || 'eggs, spinach, onion', [])}
-            onSelectSample={() => handleSelectSample('rustic-frittata')}
+            onRetry={() => {
+              if (errorContextRef.current === 'detection' && lastPhotoRef.current) {
+                handleDetectIngredients(
+                  lastPhotoRef.current.base64,
+                  lastPhotoRef.current.mediaType,
+                  lastPhotoRef.current.previewUrl
+                );
+              } else {
+                handleGenerateRecipe(lastInputQuery || 'eggs, spinach, onion', []);
+              }
+            }}
+            onSelectSample={() => {
+              cancelDetection();
+              handleSelectSample('rustic-frittata');
+            }}
           />
         )}
 
         {/* Normal Views */}
-        {!isLoading && !errorMsg && (
+        {!isLoading && !isDetecting && !errorMsg && (
           <>
             {activeTab === 'input' && (
-              <InputScreen
-                onGenerate={handleGenerateRecipe}
-                isLoading={isLoading}
-                onSelectSampleRecipe={handleSelectSample}
-              />
+              <>
+                {isDetectionEmpty ? (
+                  /* Empty Detection State View */
+                  <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-6 font-['Space_Grotesk']">
+                    <div className="w-16 h-16 bg-[#121212] border-2 border-[#FF3E00] flex items-center justify-center mx-auto text-[#FF3E00]">
+                      <Refrigerator className="w-8 h-8 stroke-[2]" />
+                    </div>
+                    <div className="space-y-2">
+                      <span className="font-mono text-xs uppercase text-[#FF3E00] tracking-[0.25em] font-bold">
+                        SCAN NOTE
+                      </span>
+                      <h2 className="font-['Syne'] text-2xl md:text-3xl font-black uppercase tracking-tight text-[#F5F5F5]">
+                        NO INGREDIENTS DETECTED
+                      </h2>
+                      <p className="font-['Space_Grotesk'] text-sm text-white/60 italic max-w-md mx-auto">
+                        We couldn't spot any ingredients in that photo. Try a clearer shot, better lighting, or switch to typing them instead.
+                      </p>
+                    </div>
+                    <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
+                      <button
+                        onClick={() => setIsDetectionEmpty(false)}
+                        className="w-full sm:w-auto bg-[#FF3E00] hover:bg-white text-black font-['Space_Grotesk'] text-xs font-black uppercase tracking-widest px-6 py-3.5 transition-colors cursor-pointer border-0"
+                      >
+                        Try Photo Again
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsDetectionEmpty(false);
+                          cancelDetection();
+                        }}
+                        className="w-full sm:w-auto border border-white/20 bg-[#121212] hover:border-white text-[#F5F5F5] font-['Space_Grotesk'] text-xs font-bold uppercase tracking-widest px-6 py-3.5 transition-colors cursor-pointer"
+                      >
+                        Type Ingredients Instead
+                      </button>
+                    </div>
+                  </div>
+                ) : detectedIngredients ? (
+                  /* Review Screen (Step 2) */
+                  <DetectedReview
+                    ingredients={detectedIngredients}
+                    imagePreview={detectedImagePreview}
+                    onConfirm={(ingredientsString) => {
+                      // Submit to existing recipe generation flow
+                      handleGenerateRecipe(ingredientsString, []);
+                      // Clear review state
+                      setDetectedIngredients(null);
+                      setDetectedImagePreview(null);
+                    }}
+                    onCancel={() => {
+                      cancelDetection();
+                    }}
+                  />
+                ) : (
+                  /* Upload and Form Input Screen (Step 1) */
+                  <InputScreen
+                    onGenerate={handleGenerateRecipe}
+                    isLoading={isLoading}
+                    onSelectSampleRecipe={handleSelectSample}
+                    onDetectIngredients={handleDetectIngredients}
+                    isDetecting={isDetecting}
+                  />
+                )}
+              </>
             )}
 
             {activeTab === 'recipe' && currentRecipe && (
