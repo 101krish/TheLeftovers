@@ -46,7 +46,7 @@ export const DetectedReview: React.FC<DetectedReviewProps> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 md:py-12 font-['Space_Grotesk',sans-serif]">
+    <div className="max-w-7xl mx-auto px-4 md:px-12 py-8 md:py-12 font-['Space_Grotesk',sans-serif]">
       {/* Title Header */}
       <div className="mb-8 border-b border-white/10 pb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>

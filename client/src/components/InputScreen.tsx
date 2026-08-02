@@ -142,7 +142,7 @@ export const InputScreen: React.FC<InputScreenProps> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 md:py-16">
+    <div className="max-w-7xl mx-auto px-4 md:px-12 py-8 md:py-16">
       <div className="mb-10 border-b border-white/10 pb-8">
         <div className="flex items-center gap-2 mb-3 text-[#FF3E00] font-['Space_Grotesk'] text-xs font-bold uppercase tracking-[0.3em]">
           <ChefHat className="w-4 h-4 stroke-[2]" />

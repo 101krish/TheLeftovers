@@ -13,7 +13,7 @@ export const BrowseRecipesView: React.FC<BrowseRecipesViewProps> = ({
   savedRecipes = [],
 }) => {
   return (
-    <div className="max-w-5xl mx-auto px-4 md:px-12 py-8 lg:py-12 space-y-12 font-['Space_Grotesk',sans-serif]">
+    <div className="max-w-7xl mx-auto px-4 md:px-12 py-8 lg:py-12 space-y-12 font-['Space_Grotesk',sans-serif]">
       {/* Header */}
       <div className="border-b border-white/10 pb-6">
         <div className="flex items-center gap-2 text-[#FF3E00] font-mono text-xs font-bold uppercase tracking-[0.25em] mb-2">

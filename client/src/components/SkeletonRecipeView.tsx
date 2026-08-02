@@ -2,7 +2,7 @@ import React from 'react';
 
 export const SkeletonRecipeView: React.FC = () => {
   return (
-    <div className="max-w-5xl mx-auto px-4 md:px-16 py-8 lg:py-16 animate-pulse font-['Space_Grotesk',sans-serif]">
+    <div className="max-w-7xl mx-auto px-4 md:px-12 py-8 lg:py-16 animate-pulse font-['Space_Grotesk',sans-serif]">
       {/* Recipe Header Skeleton */}
       <section className="mb-8 border-b border-white/10 pb-8">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">

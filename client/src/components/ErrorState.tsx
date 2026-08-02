@@ -13,7 +13,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
   onSelectSample,
 }) => {
   return (
-    <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-6 font-['Space_Grotesk',sans-serif]">
+    <div className="max-w-7xl mx-auto px-4 md:px-12 py-16 text-center space-y-6 font-['Space_Grotesk',sans-serif]">
       <div className="w-16 h-16 bg-[#121212] border-2 border-[#FF3E00] flex items-center justify-center mx-auto text-[#FF3E00]">
         <ChefHat className="w-8 h-8 stroke-[2.5]" />
       </div>
