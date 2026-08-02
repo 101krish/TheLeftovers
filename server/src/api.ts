@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { Router, Request, Response } from "express";
 import { GoogleGenerativeAI, FunctionDeclarationSchemaType as Type, Schema } from "@google/generative-ai";
-import { RecipeSchema, SwapResponseSchema } from "./schema.js";
+import { RecipeSchema, SwapResponseSchema, DetectIngredientsResponseSchema } from "./schema.js";
 
 const router = Router();
 
@@ -83,6 +83,31 @@ const SWAP_GEMINI_SCHEMA: any = {
     }
   },
   required: ["substitutes", "reason"]
+};
+
+const DETECT_GEMINI_SCHEMA: any = {
+  type: Type.OBJECT,
+  properties: {
+    ingredients: {
+      type: Type.ARRAY,
+      description: "List of detected ingredients inside the image. If no food items or ingredients are visible in the image, return an empty array.",
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          name: {
+            type: Type.STRING,
+            description: "Single ingredient name in plain lowercase (e.g. egg, spinach, bacon, onion)."
+          },
+          confidence: {
+            type: Type.STRING,
+            description: "Confidence level of detection: 'high' (clearly visible), 'medium' (partially visible or likely), or 'low' (uncertain or guess)."
+          }
+        },
+        required: ["name", "confidence"]
+      }
+    }
+  },
+  required: ["ingredients"]
 };
 
 // Helper function to race Gemini API call with a 20-second timeout
@@ -224,6 +249,76 @@ Other Ingredients in Recipe: ${recipe.ingredients?.map((i: any) => i.name).join(
     });
   } catch (error: any) {
     console.error("Error swapping ingredient:", error);
+    if (error?.message === "TIMEOUT_ERROR") {
+      return res.status(504).json({ success: false, error: "timeout" });
+    }
+    return res.status(502).json({ success: false, error: "network" });
+  }
+});
+
+// POST /api/detect-ingredients
+router.post("/detect-ingredients", async (req: Request, res: Response) => {
+  const { image, mediaType } = req.body;
+
+  if (!image || !mediaType) {
+    return res.status(400).json({ success: false, error: "bad_output" });
+  }
+
+  // Reject oversized payloads (cap at 5MB)
+  const byteLength = Buffer.byteLength(image, 'base64');
+  const sizeInMB = byteLength / (1024 * 1024);
+  if (sizeInMB > 5) {
+    console.error("Payload size exceeds 5MB limit:", sizeInMB.toFixed(2), "MB");
+    return res.status(413).json({ success: false, error: "bad_output" });
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: DETECT_GEMINI_SCHEMA,
+      },
+    });
+
+    const imageParts = [
+      {
+        inlineData: {
+          data: image,
+          mimeType: mediaType
+        }
+      }
+    ];
+
+    const prompt = `You are a computer vision culinary AI. Analyze this image of kitchen ingredients or inside a refrigerator.
+Detect all visible food ingredients, raw items, packaged items, or spices.
+For each item, output its name (in lowercase) and your confidence level ('high', 'medium', or 'low').
+If the image does not show any food items or ingredients, return an empty array for ingredients.`;
+
+    const apiCall = model.generateContent([prompt, ...imageParts]);
+    const response = await callGeminiWithTimeout(apiCall);
+    const text = response.response.text();
+
+    if (!text) {
+      console.error("Empty response text from Gemini Vision");
+      return res.status(400).json({ success: false, error: "bad_output" });
+    }
+
+    const parsedJson = JSON.parse(text);
+
+    // Validate structured response against Zod schema
+    const parseResult = DetectIngredientsResponseSchema.safeParse(parsedJson);
+    if (!parseResult.success) {
+      console.error("Zod validation failed for detections:", parseResult.error.format());
+      return res.status(400).json({ success: false, error: "bad_output" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      ingredients: parseResult.data.ingredients,
+    });
+  } catch (error: any) {
+    console.error("Error detecting ingredients:", error);
     if (error?.message === "TIMEOUT_ERROR") {
       return res.status(504).json({ success: false, error: "timeout" });
     }
