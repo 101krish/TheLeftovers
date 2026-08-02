@@ -24,6 +24,13 @@ export const RecipeSchema = z.object({
   steps: z.array(StepSchema),
   tags: z.array(z.string()),
   missingIngredients: z.array(z.string()),
+  imageUrl: z.string().optional(),
+  imageAlt: z.string().optional(),
+  chefNoteText: z.string().optional(),
+});
+
+export const RecipeListResponseSchema = z.object({
+  recipes: z.array(RecipeSchema).min(4).max(4),
 });
 
 export const SwapResponseSchema = z.object({
